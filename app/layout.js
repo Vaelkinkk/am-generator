@@ -1,6 +1,8 @@
+import './style.css';
+
 export const metadata = {
-  title: "AM Activator",
-  description: "AM activation dashboard"
+  title: 'AM Premium',
+  description: 'AM Premium Activator',
 };
 
 export default function RootLayout({ children }) {
