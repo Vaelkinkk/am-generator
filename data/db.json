@@ -4,11 +4,6 @@
       "key": "vael-0",
       "active": true,
       "expiresAt": 4102444800000
-    },
-    {
-      "key": "freebyvael",
-      "active": true,
-      "expiresAt": 1786216200000
     }
   ]
 }
