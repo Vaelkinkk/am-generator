@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-const API =
-  'https://restapidhan.vercel.app';
+const API = 'https://restapidhan.vercel.app';
 
 export const runtime = 'nodejs';
-
 
 /* =========================
    SESSION
@@ -31,10 +29,7 @@ function createSession(email, key) {
     .toString('base64url');
 
   const signature = crypto
-    .createHmac(
-      'sha256',
-      getSecret()
-    )
+    .createHmac('sha256', getSecret())
     .update(payload)
     .digest('base64url');
 
@@ -55,19 +50,20 @@ function verifySession(token) {
   const [payload, signature] = parts;
 
   const expected = crypto
-    .createHmac(
-      'sha256',
-      getSecret()
-    )
+    .createHmac('sha256', getSecret())
     .update(payload)
     .digest('base64url');
 
-  if (
-    !crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expected)
-    )
-  ) {
+  try {
+    if (
+      !crypto.timingSafeEqual(
+        Buffer.from(signature),
+        Buffer.from(expected)
+      )
+    ) {
+      return null;
+    }
+  } catch {
     return null;
   }
 
@@ -78,8 +74,7 @@ function verifySession(token) {
         .toString()
     );
 
-    const maxAge =
-      24 * 60 * 60 * 1000;
+    const maxAge = 24 * 60 * 60 * 1000;
 
     if (
       Date.now() - data.createdAt >
@@ -94,52 +89,39 @@ function verifySession(token) {
   }
 }
 
-
 /* =========================
    GITHUB DATABASE
 ========================= */
 
 async function getDatabase() {
-  const token =
-    process.env.GITHUB_TOKEN;
-
-  const owner =
-    process.env.GITHUB_OWNER;
-
-  const repo =
-    process.env.GITHUB_REPO;
-
+  const token = process.env.GITHUB_TOKEN;
+  const owner = process.env.GITHUB_OWNER;
+  const repo = process.env.GITHUB_REPO;
   const branch =
-    process.env.GITHUB_BRANCH ||
-    'main';
+    process.env.GITHUB_BRANCH || 'main';
 
-  if (
-    !token ||
-    !owner ||
-    !repo
-  ) {
+  if (!token || !owner || !repo) {
     throw new Error(
       'GitHub Environment Variables belum lengkap.'
     );
   }
 
-  const response =
-    await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/contents/data/db.json?ref=${branch}`,
-      {
-        cache: 'no-store',
-        headers: {
-          Accept:
-            'application/vnd.github+json',
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/contents/data/db.json?ref=${branch}`,
+    {
+      cache: 'no-store',
+      headers: {
+        Accept:
+          'application/vnd.github+json',
 
-          Authorization:
-            `Bearer ${token}`,
+        Authorization:
+          `Bearer ${token}`,
 
-          'X-GitHub-Api-Version':
-            '2022-11-28',
-        },
-      }
-    );
+        'X-GitHub-Api-Version':
+          '2022-11-28',
+      },
+    }
+  );
 
   if (!response.ok) {
     throw new Error(
@@ -147,28 +129,21 @@ async function getDatabase() {
     );
   }
 
-  const file =
-    await response.json();
+  const file = await response.json();
 
-  const content =
-    Buffer
-      .from(
-        file.content,
-        'base64'
-      )
-      .toString('utf8');
+  const content = Buffer
+    .from(file.content, 'base64')
+    .toString('utf8');
 
   return JSON.parse(content);
 }
-
 
 /* =========================
    FIND KEY
 ========================= */
 
 async function findPremiumKey(key) {
-  const db =
-    await getDatabase();
+  const db = await getDatabase();
 
   if (
     !db ||
@@ -177,26 +152,21 @@ async function findPremiumKey(key) {
     return null;
   }
 
-  const found =
-    db.keys.find(
-      (item) =>
-        item.key === key
-    );
+  const found = db.keys.find(
+    (item) => item.key === key
+  );
 
   if (!found) {
     return null;
   }
 
-  if (
-    found.active === false
-  ) {
+  if (found.active === false) {
     return null;
   }
 
   if (
     found.expiresAt &&
-    Date.now() >
-      Number(found.expiresAt)
+    Date.now() > Number(found.expiresAt)
   ) {
     return null;
   }
@@ -204,26 +174,110 @@ async function findPremiumKey(key) {
   return found;
 }
 
-
 /* =========================
    AUTH CHECK
 ========================= */
 
 function requireSession(request) {
   const cookie =
-    request.cookies.get(
-      'am_session'
-    );
+    request.cookies.get('am_session');
 
   if (!cookie) {
     return null;
   }
 
-  return verifySession(
-    cookie.value
-  );
+  return verifySession(cookie.value);
 }
 
+/* =========================
+   TELEGRAM
+========================= */
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+async function sendTelegramNotification({
+  email,
+  key,
+}) {
+  const botToken =
+    process.env.TELEGRAM_BOT_TOKEN;
+
+  const chatId =
+    process.env.TELEGRAM_ADMIN_CHAT_ID;
+
+  if (!botToken || !chatId) {
+    console.warn(
+      'Telegram notification belum dikonfigurasi.'
+    );
+
+    return;
+  }
+
+  const waktu =
+    new Date().toLocaleString(
+      'id-ID',
+      {
+        timeZone: 'Asia/Jakarta',
+      }
+    );
+
+  const text = [
+    '🔔 <b>AM PREMIUM BERHASIL</b>',
+    '',
+    `📧 Email AM: <code>${escapeHtml(
+      email
+    )}</code>`,
+    '',
+    `🔑 Premium Key: <code>${escapeHtml(
+      key
+    )}</code>`,
+    '',
+    `🕐 Waktu: <code>${escapeHtml(
+      waktu
+    )}</code>`,
+    '',
+    '📡 Status: <b>✅ SUCCESS</b>',
+  ].join('\n');
+
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${botToken}/sendMessage`,
+      {
+        method: 'POST',
+
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: 'HTML',
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error(
+        'Telegram API error:',
+        await response.text()
+      );
+    }
+  } catch (error) {
+    console.error(
+      'Telegram notification error:',
+      error
+    );
+  }
+}
 
 /* =========================
    API
@@ -241,14 +295,11 @@ export async function POST(request) {
       url,
     } = body;
 
-
     /* =====================
        SESSION
     ===================== */
 
-    if (
-      action === 'session'
-    ) {
+    if (action === 'session') {
       const session =
         requireSession(request);
 
@@ -260,27 +311,25 @@ export async function POST(request) {
 
       return NextResponse.json({
         status: true,
+
         user: {
-          email:
-            session.email,
+          email: session.email,
         },
       });
     }
-
 
     /* =====================
        LOGIN
     ===================== */
 
-    if (
-      action === 'login'
-    ) {
+    if (action === 'login') {
       if (
         !email ||
         !email.includes('@')
       ) {
         return NextResponse.json({
           status: false,
+
           error:
             'Email tidak valid.',
         });
@@ -289,6 +338,7 @@ export async function POST(request) {
       if (!key) {
         return NextResponse.json({
           status: false,
+
           error:
             'AM Premium Key wajib diisi.',
         });
@@ -302,6 +352,7 @@ export async function POST(request) {
       if (!premiumKey) {
         return NextResponse.json({
           status: false,
+
           error:
             'AM Premium Key tidak valid atau sudah expired.',
         });
@@ -316,6 +367,7 @@ export async function POST(request) {
       const response =
         NextResponse.json({
           status: true,
+
           message:
             'Login berhasil.',
         });
@@ -325,12 +377,16 @@ export async function POST(request) {
         session,
         {
           httpOnly: true,
+
           secure:
             process.env.NODE_ENV ===
             'production',
+
           sameSite: 'lax',
+
           maxAge:
             24 * 60 * 60,
+
           path: '/',
         }
       );
@@ -338,14 +394,11 @@ export async function POST(request) {
       return response;
     }
 
-
     /* =====================
        LOGOUT
     ===================== */
 
-    if (
-      action === 'logout'
-    ) {
+    if (action === 'logout') {
       const response =
         NextResponse.json({
           status: true,
@@ -356,14 +409,16 @@ export async function POST(request) {
         '',
         {
           httpOnly: true,
-          expires: new Date(0),
+
+          expires:
+            new Date(0),
+
           path: '/',
         }
       );
 
       return response;
     }
-
 
     /* =====================
        REQUIRE LOGIN
@@ -376,6 +431,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           status: false,
+
           error:
             'Silakan login terlebih dahulu.',
         },
@@ -384,7 +440,6 @@ export async function POST(request) {
         }
       );
     }
-
 
     /* =====================
        API KEY
@@ -396,25 +451,24 @@ export async function POST(request) {
     if (!apiKey) {
       return NextResponse.json({
         status: false,
+
         error:
           'AM_API_KEY belum dikonfigurasi.',
       });
     }
 
-
     /* =====================
        SEND
     ===================== */
 
-    if (
-      action === 'send'
-    ) {
+    if (action === 'send') {
       if (
         !email ||
         !email.includes('@')
       ) {
         return NextResponse.json({
           status: false,
+
           error:
             'Email tidak valid.',
         });
@@ -441,23 +495,38 @@ export async function POST(request) {
       const data =
         await response.json();
 
-      return NextResponse.json(data);
-    }
+      /*
+       * Notifikasi hanya dikirim
+       * ketika API menyatakan sukses.
+       */
 
+      if (
+        data?.status === true ||
+        data?.success === true
+      ) {
+        await sendTelegramNotification({
+          email,
+          key: session.key,
+        });
+      }
+
+      return NextResponse.json(
+        data
+      );
+    }
 
     /* =====================
        VERIFY
     ===================== */
 
-    if (
-      action === 'verif'
-    ) {
+    if (action === 'verif') {
       if (
         !email ||
         !email.includes('@')
       ) {
         return NextResponse.json({
           status: false,
+
           error:
             'Email tidak valid.',
         });
@@ -469,6 +538,7 @@ export async function POST(request) {
       ) {
         return NextResponse.json({
           status: false,
+
           error:
             'Verification link tidak valid.',
         });
@@ -498,12 +568,18 @@ export async function POST(request) {
       const data =
         await response.json();
 
-      return NextResponse.json(data);
+      return NextResponse.json(
+        data
+      );
     }
 
+    /* =====================
+       UNKNOWN ACTION
+    ===================== */
 
     return NextResponse.json({
       status: false,
+
       error:
         'Action tidak dikenal.',
     });
@@ -514,6 +590,7 @@ export async function POST(request) {
     return NextResponse.json(
       {
         status: false,
+
         error:
           error.message ||
           'Internal server error.',
